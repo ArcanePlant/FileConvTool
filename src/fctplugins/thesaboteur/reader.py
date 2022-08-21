@@ -1,5 +1,6 @@
 import os
 
+from fctplugins.thesaboteur.util import fnv32hash
 from modhelpers.mio import Mio
 from modhelpers.math_util import MathUtils
 
@@ -77,11 +78,11 @@ https://en.wikipedia.org/wiki/DotXSI is mentioned in a path in /Animations.pack
 """
 
 
-def export_hei_as_ply(dir: str, filename: str):
+def export_hei_as_ply(source_directory: str, filename: str):
     # x/y/z are denoted in Blenders coordinate system
     # DirectX: x/y/z
     # DirectX to Blender: x * -1/z/y
-    file_path = os.path.join(dir, filename)
+    file_path = os.path.join(source_directory, filename)
     with open(file_path, 'rb') as f:
         if Mio.read_fixed_length_string(4, 'ASCII', f) != '5IEH':
             raise ValueError('Invalid file')
@@ -95,7 +96,7 @@ def export_hei_as_ply(dir: str, filename: str):
         global_ymin = Mio.read_float32le(f)
         print(f'Block count: {block_count}, maybe_x_max_block_count: {maybe_x_max_block_count}, maybe_y_max_block_count: {maybe_y_max_block_count},',
               f'global_sidelength: {global_sidelength}, global_xmin: {global_xmin}, global_ymin: {global_ymin}')
-        with open(os.path.join(dir, 'hei.ply'), 'wb') as ply:
+        with open(os.path.join(source_directory, 'hei.ply'), 'wb') as ply:
             ply.write(b'ply\nformat ascii 1.0\nelement vertex ')
             ply.write(f'{block_count * 10 * 10}'.encode('ASCII'))  # All blocks are 10*10
             ply.write(b'\nproperty float x\nproperty float y\nproperty float z\nelement face ')
@@ -128,7 +129,7 @@ def export_hei_as_ply(dir: str, filename: str):
                     raise ValueError('Unexpected block width')
                 if int(block_y_max - block_y_min) != 60:
                     raise ValueError('Unexpected block depth')
-                #print(f'{format(block_z_max, ".2f")}\t{format(block_z_min, ".2f")}\tblock_x_min: {block_x_min}\tblock_y_min: {block_y_min}\tblock_x_max: {block_x_max}\tblock_y_max: {block_y_max}')
+                print(f'{format(block_z_max, ".2f")}\t{format(block_z_min, ".2f")}\tblock_x_min: {block_x_min}\tblock_y_min: {block_y_min}\tblock_x_max: {block_x_max}\tblock_y_max: {block_y_max}')
 
                 # Calculate data
                 for y_entry in range(block_y_entries_count):
@@ -146,3 +147,61 @@ def export_hei_as_ply(dir: str, filename: str):
                     for x in range(9):
                         first_vertex = (current_block * number_of_vertices_per_block) + (10 * y) + x
                         ply.write(f'4 {first_vertex + 1} {first_vertex} {first_vertex + 10} {first_vertex + 11}\n'.encode('ASCII'))
+
+
+def export_waterflow_as_ply(source_directory: str, filename: str):
+    waterflow_hash_sources = ['WaterFlow1']  # From Hashes.txt from SabTool
+    waterflow_hashes = {}
+    for waterflow_hash_source in waterflow_hash_sources:
+        waterflow_hashes[fnv32hash(waterflow_hash_source)] = waterflow_hash_source
+
+    file_path = os.path.join(source_directory, filename)
+    with open(file_path, 'rb') as f:
+        if Mio.read_fixed_length_string(4, 'ASCII', f) != '70FW':
+            raise ValueError('Invalid file')
+        count_entries = Mio.read_uint32le(f)
+        with open(os.path.join(source_directory, 'waterflow.ply'), 'wb') as ply:
+            ply.write(b'ply\nformat ascii 1.0\nelement vertex 141\nproperty float x\nproperty float y\nproperty float z\nend_header\n')
+            for _ in range(count_entries):
+                # 36 bytes
+                waterflow_hash = Mio.read_uint32le(f)
+                x = Mio.read_float32le(f)
+                z = Mio.read_float32le(f)
+                y = Mio.read_float32le(f)
+                # Probably Vector3 or radians + something else
+                # TODO find out
+                floatUnknown1 = Mio.read_float32le(f)
+                float4 = Mio.read_float32le(f)
+                floatUnknown2 = Mio.read_float32le(f)
+                float5 = Mio.read_float32le(f)
+                float6 = Mio.read_float32le(f)
+                print(f'{waterflow_hashes[waterflow_hash]} {x} {z} {y} {float4} {float5} {float6} {floatUnknown1} {floatUnknown2}')
+                ply.write(f'{x * -1} {y} {z}\n'.encode('ASCII'))
+
+
+def export_waterctrl_as_ply(source_directory: str, filename: str):
+    # From Hashes.txt from SabTool
+    waterctrl_hash_source = ['WaterController_Rapid_light', 'Water_Siene', 'Lake2_WalHal', 'Lake2_ChinaOutskirts',
+                             'Lake1_Doppelseig', 'WaterController_Lake1_Morini', 'Lake1_SaarCheckpoint',
+                             'WaterController_Ocean', 'Lake1_Boise_du_boulogne', 'Lake1_riveroutlet',
+                             'Lake1_ParcChaumont', 'Ocean_Eiffel_Pond', 'Ocean_Champs_Pond',
+                             'Ocean_Trocadero', 'WaterController_Slow_Creek', 'WaterController_Rapid']
+    waterctrl_hashes = {}
+    for hash_source in waterctrl_hash_source:
+        waterctrl_hashes[fnv32hash(hash_source)] = hash_source
+    file_path = os.path.join(source_directory, filename)
+    with open(file_path, 'rb') as f:
+        if Mio.read_fixed_length_string(4, 'ASCII', f) != '70CW':
+            raise ValueError('Invalid file')
+        count_entries = Mio.read_uint32le(f)
+        with open(os.path.join(source_directory, 'waterctrl.ply'), 'wb') as ply:
+            ply.write(b'ply\nformat ascii 1.0\nelement vertex 125\nproperty float x\nproperty float y\nproperty float z\nend_header\n')
+            for _ in range(count_entries):
+                waterctrl_hash = Mio.read_uint32le(f)
+                x = Mio.read_float32le(f)
+                z = Mio.read_float32le(f)
+                y = Mio.read_float32le(f)
+                if Mio.read_uint32le(f) != 0:  # skip, always 0
+                    raise ValueError('not 0')
+                print(f'{waterctrl_hashes[waterctrl_hash]} {x} {y} {z}')
+                ply.write(f'{x * -1} {y} {z}\n'.encode('ascii'))
